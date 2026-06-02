@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.env
+.venv/
+venv/
+*.db
+.DS_Store
+
+# Juice Shop local installs (keep vendored source; ignore heavy artifacts)
+juice-shop/node_modules/
+juice-shop/dist/
+juice-shop/build/
+juice-shop/coverage/
+juice-shop/.nyc_output/
+juice-shop/logs/
+juice-shop/juiceshop.sqlite
+juice-shop/data/juiceshop.sqlite*
