@@ -1,0 +1,16 @@
+{
+  "name": "arango-fetch-courses",
+  "description": "Fetch all courses from ArangoDB (read-only). Skill does not filter by vulnerability.",
+  "inputs": [],
+  "outputs": [
+    {
+      "name": "courses",
+      "type": "list",
+      "description": "List of courses with name and description"
+    }
+  ],
+  "execution": {
+    "type": "cloud_skill",
+    "skill_name": "arango-fetch-courses"
+  }
+}
