@@ -1,0 +1,123 @@
+{
+  "schema_version": "1",
+  "chat_session_id": "ef62f4a6-01ed-40ee-91b8-a19c03c72ff3",
+  "workflow_name": "List users REST endpoint",
+  "title": "Secure GET /users with SQLite field whitelist and safe errors",
+  "summary": "Hardened GET /users to read from SQLite with a static parameterized query, explicit PUBLIC_USER_FIELDS serialization, generic client errors with correlation IDs, and server-side exception logging.",
+  "metadata": {
+    "project_id": "e00ccc4a-3cb0-4288-a2fa-57703efa93e8",
+    "project_slug": "security-tool",
+    "framework": "Flask",
+    "database": "SQLite"
+  },
+  "threats_mitigated": [
+    {
+      "threat_name": "SQL injection on user listing",
+      "description": "Dynamic SQL built from request input could allow injection into the users table read path.",
+      "severity": "high",
+      "mitigation_applied": "Static SELECT with fixed columns; no user input in the query. Seed inserts use executemany with ? placeholders."
+    },
+    {
+      "threat_name": "Sensitive field disclosure in API responses",
+      "description": "Returning full row dicts could expose password hashes or internal columns if the schema grows.",
+      "severity": "medium",
+      "mitigation_applied": "PUBLIC_USER_FIELDS whitelist and serialize_user() project only id, username, email into JSON."
+    },
+    {
+      "threat_name": "Internal error leakage to clients",
+      "description": "SQLite stack traces or error text in HTTP responses reveal schema and implementation details.",
+      "severity": "medium",
+      "mitigation_applied": "Catch sqlite3.Error, log server-side with correlation_id, return generic JSON error body without SQL or trace text."
+    },
+    {
+      "threat_name": "Connection resource exhaustion",
+      "description": "Unhandled exceptions could leave SQLite connections open under load.",
+      "severity": "low",
+      "mitigation_applied": "finally block always closes the connection."
+    }
+  ],
+  "best_practices_achieved": [
+    "Parameterized/static SQL for all database reads",
+    "Explicit response field whitelist separate from DB projection",
+    "Generic user-facing errors with opaque correlation IDs",
+    "Server-side exception logging without echoing secrets",
+    "Deterministic ORDER BY id for stable list responses",
+    "Automated tests for happy path and error non-disclosure"
+  ],
+  "secure_code_snippets": [
+    {
+      "language": "python",
+      "file_path": "app.py",
+      "explanation": "Whitelist serializer ensures only public fields reach the client even if the query changes.",
+      "code": "PUBLIC_USER_FIELDS = (\"id\", \"username\", \"email\")\n\ndef serialize_user(row):\n    return {field: row[field] for field in PUBLIC_USER_FIELDS}"
+    },
+    {
+      "language": "python",
+      "file_path": "app.py",
+      "explanation": "Static parameterized read with safe error handling and connection cleanup.",
+      "code": "@app.route(\"/users\", methods=[\"GET\"])\ndef list_users():\n    conn = get_db()\n    try:\n        rows = conn.execute(\n            \"SELECT id, username, email FROM users ORDER BY id\"\n        ).fetchall()\n        return jsonify([serialize_user(row) for row in rows])\n    except sqlite3.Error:\n        correlation_id = uuid.uuid4().hex\n        logger.exception(\"Failed to list users (correlation_id=%s)\", correlation_id)\n        return jsonify({\"error\": \"Unable to retrieve users\", \"correlation_id\": correlation_id}), 500\n    finally:\n        conn.close()"
+    }
+  ],
+  "guardrails_applied": [
+    {
+      "source": "existing",
+      "guardrail_id": "b93f00a4-bff2-4dbf-8b47-962e07db360a",
+      "title": "Do not build queries or commands with string concatenation",
+      "rule_type": "must_not",
+      "category": "persistence",
+      "instruction": "Don't concatenate untrusted input into SQL/NoSQL/LDAP/OS command templates. Use parameterized APIs and safe query builders.",
+      "satisfied": true,
+      "notes": "GET /users uses a static SELECT; seed data uses ? placeholders via executemany."
+    },
+    {
+      "source": "existing",
+      "guardrail_id": "42aac4e2-6874-4af1-94d6-9a8085036b66",
+      "title": "Use parameter binding with SQLAlchemy or raw cursors",
+      "rule_type": "must",
+      "category": "persistence",
+      "instruction": "Execute raw queries as db.session.execute(text('... :id'), {'id': ...}); never f-string.",
+      "satisfied": true,
+      "notes": "sqlite3 execute/executemany with bound parameters; no f-string SQL on the /users path."
+    },
+    {
+      "source": "existing",
+      "guardrail_id": "a30fdb36-397f-4794-a2df-0eeed263cd22",
+      "title": "Do not use jsonify with SQLAlchemy model objects directly",
+      "rule_type": "must_not",
+      "category": "persistence",
+      "instruction": "Don't dump full model dicts via jsonify(user.__dict__); build an explicit response dict or use a marshmallow schema.",
+      "satisfied": true,
+      "notes": "serialize_user builds an explicit dict from PUBLIC_USER_FIELDS instead of dict(row)."
+    },
+    {
+      "source": "existing",
+      "guardrail_id": "3e722b02-744c-4b4f-aa80-1467fa3db528",
+      "title": "Do not return verbose internal errors to users",
+      "rule_type": "must_not",
+      "category": "data_exposure",
+      "instruction": "Don't expose stack traces, SQL errors, framework debug pages, or internal identifiers in responses. Return generic errors with correlation IDs.",
+      "satisfied": true,
+      "notes": "500 responses return a fixed error string plus correlation_id; SQL text never included."
+    },
+    {
+      "source": "existing",
+      "guardrail_id": "2364a5d7-e8c6-4a3d-932b-6986571d0163",
+      "title": "Eliminate vulnerability classes structurally, not by case-by-case patching",
+      "rule_type": "must",
+      "category": "config",
+      "instruction": "For each class CISA highlights (SQLi, XSS, command injection, path traversal, memory-safety bugs), pick a structural mitigation rather than per-callsite review: parameterized queries / ORM-only DB access.",
+      "satisfied": true,
+      "notes": "Structural field whitelist and static query pattern applied to the listing endpoint."
+    }
+  ],
+  "owasp_mappings": [
+    {
+      "category_id": "A05:2025",
+      "category_name": "Injection"
+    },
+    {
+      "category_id": "A10:2025",
+      "category_name": "Mishandling of Exceptional Conditions"
+    }
+  ]
+}

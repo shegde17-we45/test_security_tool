@@ -1,0 +1,103 @@
+---
+description: VibeReview security workflow
+alwaysApply: true
+---
+
+# VibeReview Security Workflow
+
+Configured VibeReview project: `Security TooL`
+Project slug: `security-tool`
+Project id: `e00ccc4a-3cb0-4288-a2fa-57703efa93e8`
+
+These instructions are always active for security-relevant coding work. Keep this file as the routing policy; use the skills below for the detailed workflows.
+
+## Core Workflow
+
+For any task that touches auth, authorization, input handling, secrets, network, data storage, dependencies, new APIs/endpoints, infrastructure, or code handling untrusted data, this workflow is a hard pre-write gate.
+
+Do not write, edit, patch, or generate implementation code until guardrails have been fetched and shortlisted and PWNISMS threat modelling has been completed. When the task adds, upgrades, or imports any third-party dependency, also run the OSV.dev dependency scan before that package is introduced and auto-substitute a safe version for any HIGH/CRITICAL finding (this does not pause the flow). If the user asks for code immediately, still run the pre-write gate first.
+
+## Prompt-Level Trigger Policy
+
+Evaluate every user prompt independently, including follow-up prompts in an existing IDE chat. A follow-up prompt is not covered by a previous VibeReview event just because it reuses the same `chat_session_id`.
+
+Run the workflow again and create a new event artifact when the follow-up prompt changes or adds security-relevant behavior, including:
+
+- new or changed API endpoints, routes, controllers, webhooks, jobs, background workers, MCP tools, agent tools, or preview URLs
+- authentication, authorization, ownership checks, tenant boundaries, roles, sessions, tokens, cookies, redirects, or CORS
+- input validation, output rendering/escaping, file upload/download, signed URLs, SSRF/path traversal/injection surfaces, or untrusted data parsing
+- secrets, credentials, API keys, encryption, key management, third-party providers, network calls, persistence, audit/logging, monitoring, or rate limits
+- dependency, build, container, deployment, or infrastructure changes that affect runtime behavior or trust boundaries
+
+For same-chat follow-ups, reuse the same `chat_session_id` and stable `workflow_name`, but write a new prompt-specific `title` and a new JSON file for that prompt. Sync only that file with `vibereview sync --file <path-to-this-json>`.
+
+Small or "quick" changes are not exempt if they touch any of the surfaces above. Skip only when the prompt has no security surface; if you skip, be prepared to state the concrete reason, such as "documentation-only" or "formatting-only."
+
+1. **Fetch VibeReview guardrails first.**
+   - Read and follow `.cursor/skills/guardrails-selection/SKILL.md`.
+   - Resolve the VibeReview project with `vibereview_get_tenant_project` using `project_id="e00ccc4a-3cb0-4288-a2fa-57703efa93e8"` (or `project_slug="security-tool"`).
+   - Call `vibereview_get_guardrails`, shortlist only the relevant project guardrails, then preserve the exact returned guardrail entries.
+   - Preserve that exact shortlist in context for implementation and the final VibeReview sync step.
+
+2. **Run PWNISMS threat modelling before implementation.**
+   - Read and follow `.cursor/skills/threat-modelling/SKILL.md`.
+   - Explicitly walk all seven PWNISMS categories: Product, Workload, Network, IAM, Secrets, Monitoring, and Supply Chain.
+   - If a category is not applicable, say so briefly and continue.
+   - Cross-reference each meaningful threat with the shortlisted guardrails.
+
+3. **Scan every incoming dependency with OSV.dev (on-the-fly SCA) and auto-remediate.**
+   - Read and follow `.cursor/skills/osv-dependency-scan/SKILL.md`.
+   - This runs after guardrail selection / PWNISMS and **before** any package is added, upgraded, imported, or installed, so a safe version can be chosen up front. It operationalizes the PWNISMS **Supply Chain** category for the packages this task introduces.
+   - Scan the exact `name@version` for each new or changed dependency with the bundled scanner (`node .cursor/skills/osv-dependency-scan/scripts/osv-scan.mjs --ecosystem <eco> <name@version> …`).
+   - **Do not block the developer's flow.** If a version is flagged `HIGH`/`CRITICAL`, automatically substitute the recommended safe (fixed) version and keep building; re-scan the chosen version. If no fix exists, prefer a safe alternative, else proceed and record honest residual risk — never stop to ask, and never silently ship the vulnerable version as clean.
+   - Include a short transparency note (what was avoided, what version you landed on) in the response summary, and fold the avoided vuln into the final VibeReview scan artifact as telemetry (supply-chain `threats_mitigated`, `best_practices_achieved`, an `ide_generated` guardrail, and OWASP `A06:2021`).
+   - Skip only when the task introduces no new or changed dependency.
+
+4. **Implement secure code using all inputs.**
+   - This step may start only after steps 1, 2, and 3 are complete.
+   - Treat applicable `must` guardrails as mandatory.
+   - Treat applicable `must_not` guardrails as hard prohibitions.
+   - Use the PWNISMS findings to guide design, validation, authorization, logging, secrets handling, dependency choices, and abuse controls.
+   - If PWNISMS reveals a recurring security rule that is not covered by existing guardrails, create and apply an `ide_generated` guardrail in context.
+
+5. **Write and sync the structured VibeReview scan artifact last.**
+   - Read and follow `.cursor/skills/vibereview-sync/SKILL.md` (especially **MCP completeness contract**).
+   - After threat modelling is created or updated, or after guardrails are enforced during implementation, write or update a **structured JSON artifact** (`*.json`) under `.vibereview/scans/`, following `schemas/scan-artifact-v1.json` in the `@securityreviewai/vibereview` package (extra keys tolerated at ingest).
+   - Every artifact must include `chat_session_id`, stable `workflow_name`, and a prompt-specific `title`. Reuse `chat_session_id` for follow-up prompts in the same IDE chat; generate a new value for a new chat or unrelated workflow.
+   - Do not delegate artifact authoring to a subagent. The same agent that performed the work should author the JSON so context stays intact.
+   - Prefer `vibereview sync --file <path-to-this-json>` (CLI, manifest + gzip) so only the **current** artifact is sent unchanged. If the binary is not installed, use `npx -y @securityreviewai/vibereview sync --file <path-to-this-json>`; for retrying a failed/empty ingest of this same artifact, add `--force`.
+   - If using MCP instead: the server only persists what each tool sends—**never summarize** threats or omit `vibereview_ctm_structured_add_snippets` / `vibereview_ctm_structured_add_owasp` when those arrays are non-empty in the artifact. Use multiple `vibereview_ctm_structured_patch_event` or chunked `items` calls rather than shortening text. Before `vibereview_ctm_structured_finalize`, verify row counts match the artifact (see skill). Tool order:
+
+1. `vibereview_ctm_structured_start`: begin segmented upload (`artifact_hash` required).
+2. `vibereview_ctm_structured_patch_event`: (`event_id`) scalars (`title`, `summary`, …) plus **verbatim** rows for `threats_mitigated`, `best_practices_achieved` from the authored JSON (**no summaries**). Optionally **full** `secure_code_snippets`, `guardrails_applied`, `owasp_mappings`; else use step 3. Multiple PATCH calls **append**—use repeated PATCH/`items` calls for large payloads instead of shortening text.
+3. `vibereview_ctm_structured_add_snippets` / `vibereview_ctm_structured_add_guardrails` / `vibereview_ctm_structured_add_owasp`: **required whenever** step 2 did not already send **every** row from the artifact arrays (chunk `items` per call); call each endpoint at least once with a non-empty `items` array **or** omit only if step 2 already included the full arrays.
+4. `vibereview_ctm_structured_finalize`: **only after** cardinality matches the artifact (same counts/threat/snippet/guardrail/OWASP rows as file); then pass `scan_id`.
+
+   - If MCP upload fails, keep the artifact in `.vibereview/scans/`, report the failure, and do not pretend synchronization succeeded.
+
+## Guardrail Approval (HITL)
+
+The `vibereview_get_guardrails` response includes an `approval_mode` and a `requires_approval` flag on every guardrail. This is a hard gate, not a hint:
+
+- `approval_mode: "auto"` — apply guardrails normally.
+- `approval_mode: "critical"` or `approval_mode: "always"` — before applying any guardrail where `requires_approval=true`, stop and explicitly confirm with the user. Summarize what you are about to change (files, intent, the specific guardrail) and wait for an explicit "yes" / "approve" / "go ahead" reply before editing. The user controls this from project / tenant settings; do not bypass it even when the IDE is operating in an allow-all edit mode.
+
+The critical categories (Authentication, Authorization, Cryptography and Key Management, Secrets) are the ones the user has chosen to never auto-apply. Treat them with the same weight as a `must` guardrail under PWNISMS.
+
+## When To Skip
+
+Skip the VibeReview security workflow only for tasks with no security surface, such as documentation-only changes, typo fixes, pure formatting, variable renames with no logic change, or general Q&A that produces no code. Do not skip merely because the task is a continuation of a previous chat, seems small, or will edit only a few lines.
+
+If in doubt, run the workflow. A quick PWNISMS pass is better than silently missing a security boundary.
+
+## Profiling Is Server-Side
+
+Do not run codebase-profiling tools locally during normal coding tasks. VibeReview profiles the repository server-side after project creation; the IDE never owns that step. The normal coding workflow is guardrails selection, PWNISMS threat modelling, secure implementation, then structured scan JSON ingest (CLI `vibereview sync --file <path-to-this-json>` or MCP segmented tools).
+
+## Tool Reference
+
+| Purpose | Tool |
+|---|---|
+| Project resolution | `vibereview_get_tenant_project` |
+| Guardrails | `vibereview_get_guardrails` |
+| Structured CTM (MCP) | `\`vibereview_ctm_structured_start\` → `\`vibereview_ctm_structured_finalize\` (see SKILL for full sequence) |

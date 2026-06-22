@@ -1,0 +1,2 @@
+flask
+bcrypt==4.2.1

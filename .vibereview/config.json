@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "mcp_url": " https://mcp.securityreview.ai",
+  "api_url": "https://vibereview.securityreview.ai",
+  "api_key": "vbr_production_Qr9os4IJT6Zdync7v7ScuhL5DUdVerK",
+  "tenant_id": "1ea41aeb-0f9b-45cc-9fff-fdd00e34fed7",
+  "project_slug": "security-tool",
+  "project_id": "e00ccc4a-3cb0-4288-a2fa-57703efa93e8",
+  "project_name": "Security TooL",
+  "scm_provider": "github",
+  "scm_repo_url": "https://github.com/shegde17-we45/test_security_tool.git",
+  "token_scope": "single",
+  "token_project_ids": [
+    "e00ccc4a-3cb0-4288-a2fa-57703efa93e8"
+  ],
+  "targets": [
+    "cursor"
+  ],
+  "last_synced": "2026-06-22T07:15:16.938Z"
+}

@@ -1,0 +1,130 @@
+{
+  "schema_version": "1",
+  "chat_session_id": "ef62f4a6-01ed-40ee-91b8-a19c03c72ff3",
+  "workflow_name": "List users REST endpoint",
+  "title": "Secure GET /users listing endpoint",
+  "summary": "Implemented and hardened a read-only Flask GET /users endpoint that returns id, username, and email from SQLite using a static parameterized query, safe error handling, and deterministic ordering.",
+  "metadata": {
+    "project_id": "e00ccc4a-3cb0-4288-a2fa-57703efa93e8",
+    "project_slug": "security-tool",
+    "framework": "Flask",
+    "database": "SQLite"
+  },
+  "threats_mitigated": [
+    {
+      "threat_name": "SQL injection via list query",
+      "description": "Untrusted input concatenated into SELECT statements could expose or mutate the users table.",
+      "severity": "high",
+      "mitigation_applied": "Use a static SQL statement with no user-controlled fragments; only id, username, email are selected."
+    },
+    {
+      "threat_name": "Information disclosure via database errors",
+      "description": "SQLite exceptions returned to clients could leak schema or query details.",
+      "severity": "medium",
+      "mitigation_applied": "Catch sqlite3.Error and return a generic JSON error with HTTP 500; no stack traces or SQL text in the response."
+    },
+    {
+      "threat_name": "Over-exposure of user record fields",
+      "description": "Returning full user rows could leak sensitive columns if added later.",
+      "severity": "medium",
+      "mitigation_applied": "Explicit column projection (id, username, email) in the query and JSON response."
+    },
+    {
+      "threat_name": "Unauthenticated bulk user enumeration",
+      "description": "A public list endpoint allows anyone to enumerate all users.",
+      "severity": "low",
+      "mitigation_applied": "Accepted as intentional for this simple demo endpoint; documented residual risk. Production would require authentication and authorization."
+    }
+  ],
+  "best_practices_achieved": [
+    "Static parameterized SQL with explicit column allowlist",
+    "try/finally ensures database connections are closed",
+    "Generic error responses without internal details",
+    "JSON responses via Flask jsonify",
+    "Automated test coverage for GET /users"
+  ],
+  "secure_code_snippets": [
+    {
+      "language": "python",
+      "file_path": "app.py",
+      "code": "@app.route(\"/users\", methods=[\"GET\"])\ndef list_users():\n    \"\"\"Public read-only listing of non-sensitive user fields.\"\"\"\n    conn = get_db()\n    try:\n        rows = conn.execute(\n            \"SELECT id, username, email FROM users ORDER BY id\"\n        ).fetchall()\n        return jsonify([dict(row) for row in rows])\n    except sqlite3.Error:\n        return jsonify({\"error\": \"Unable to retrieve users\"}), 500\n    finally:\n        conn.close()",
+      "explanation": "Read-only list endpoint with static query, field projection, safe error handling, and guaranteed connection cleanup."
+    }
+  ],
+  "guardrails_applied": [
+    {
+      "source": "existing",
+      "guardrail_id": "b93f00a4-bff2-4dbf-8b47-962e07db360a",
+      "title": "Do not build queries or commands with string concatenation",
+      "rule_type": "must_not",
+      "category": "persistence",
+      "instruction": "Don't concatenate untrusted input into SQL/NoSQL/LDAP/OS command templates. Use parameterized APIs and safe query builders.",
+      "satisfied": true,
+      "notes": "GET /users uses a static SELECT with no interpolated user input."
+    },
+    {
+      "source": "existing",
+      "guardrail_id": "2364a5d7-e8c6-4a3d-932b-6986571d0163",
+      "title": "Eliminate vulnerability classes structurally, not by case-by-case patching",
+      "rule_type": "must",
+      "category": "config",
+      "instruction": "For each class CISA highlights (SQLi, XSS, command injection, path traversal, memory-safety bugs), pick a structural mitigation rather than per-callsite review: parameterized queries / ORM-only DB access; auto-escaping templates (no raw HTML interpolation); a single command-runner that refuses string concatenation; a path-join helper that rejects '..'; memory-safe languages for new code. Lint/CI rules should fail builds that bypass these.",
+      "satisfied": true,
+      "notes": "Structural SQLi mitigation via static query builder pattern on this route."
+    },
+    {
+      "source": "existing",
+      "guardrail_id": "3e722b02-744c-4b4f-aa80-1467fa3db528",
+      "title": "Do not return verbose internal errors to users",
+      "rule_type": "must_not",
+      "category": "data_exposure",
+      "instruction": "Don't expose stack traces, SQL errors, framework debug pages, or internal identifiers in responses. Return generic errors with correlation IDs.",
+      "satisfied": true,
+      "notes": "sqlite3.Error handler returns generic message without SQL details."
+    },
+    {
+      "source": "existing",
+      "guardrail_id": "0db20bee-0557-4267-9525-163403056c8d",
+      "title": "Do not expose secrets in source, logs, or error messages",
+      "rule_type": "must_not",
+      "category": "config",
+      "instruction": "Don't hardcode credentials, include secrets in stack traces, or log tokens/keys/session IDs; load secrets from managed secret stores.",
+      "satisfied": true,
+      "notes": "Error path does not log or return exception details."
+    },
+    {
+      "source": "existing",
+      "guardrail_id": "5cd085f7-eff8-48cd-aaf4-81bb39a75dbc",
+      "title": "Validate and canonicalize all untrusted input server-side",
+      "rule_type": "must",
+      "category": "validation",
+      "instruction": "Use allowlists, strict schemas, and length/type/range checks for all request data, file metadata, headers, and external API payloads.",
+      "satisfied": true,
+      "notes": "Endpoint accepts no request parameters; N/A for input validation on this route."
+    },
+    {
+      "source": "existing",
+      "guardrail_id": "5d82acde-b8f5-4465-b3d0-efc201d86ae0",
+      "title": "Enforce least-privilege and deny-by-default authorization",
+      "rule_type": "must",
+      "category": "authorization",
+      "instruction": "Apply server-side authorization checks on every protected action and object reference; default to deny when policy evaluation is unavailable.",
+      "satisfied": false,
+      "notes": "Intentionally public read-only demo endpoint; production would gate behind authz policy."
+    }
+  ],
+  "owasp_mappings": [
+    {
+      "category_id": "A01:2025",
+      "category_name": "Broken Access Control"
+    },
+    {
+      "category_id": "A05:2025",
+      "category_name": "Injection"
+    },
+    {
+      "category_id": "A10:2025",
+      "category_name": "Mishandling of Exceptional Conditions"
+    }
+  ]
+}

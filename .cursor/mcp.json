@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "vibereview": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote@latest",
+        " https://mcp.securityreview.ai/mcp",
+        "--header",
+        "Authorization:${AUTH_HEADER}"
+      ],
+      "env": {
+        "AUTH_HEADER": "Bearer vbr_production_Qr9os4IJT6Zdync7v7ScuhL5DUdVerK"
+      }
+    }
+  }
+}
